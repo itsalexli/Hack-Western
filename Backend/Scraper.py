@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
 import re
+import traceback
 
 def clean_html(file_path):
     """
@@ -19,10 +20,34 @@ def clean_html(file_path):
     # Parse with BeautifulSoup
     soup = BeautifulSoup(html_content, 'html.parser')
     
+    # Helper function to check if an element contains navigation
+    def contains_navigation(element):
+        """Check if element contains navigation menus or important header content"""
+        try:
+            if not element:
+                return False
+            # Check for nav tags
+            if element.find('nav'):
+                return True
+            # Check for navigation-related classes
+            for elem in element.find_all(class_=True):
+                classes = elem.get('class', [])
+                class_str = ' '.join(classes) if isinstance(classes, list) else str(classes)
+                if re.search(r'navigation|menu|logo', class_str, re.I):
+                    return True
+            # Check for logo images
+            for img in element.find_all('img'):
+                alt_text = img.get('alt', '')
+                if alt_text and re.search(r'logo|home', alt_text, re.I):
+                    return True
+            return False
+        except Exception:
+            # If there's any error, assume it's navigation and keep it
+            return True
+    
     # Remove unwanted elements
     unwanted_tags = [
         'style',           # Remove all style tags
-        'header',          # Remove headers
         'footer',          # Remove footers
         'iframe',          # Remove iframes
         'noscript',        # Remove noscript tags
@@ -31,6 +56,11 @@ def clean_html(file_path):
     for tag in unwanted_tags:
         for element in soup.find_all(tag):
             element.decompose()
+    
+    # Remove headers only if they don't contain navigation
+    for header in soup.find_all('header'):
+        if not contains_navigation(header):
+            header.decompose()
     
     # Remove tracking and analytics scripts
     for script in soup.find_all('script'):
@@ -97,13 +127,15 @@ def clean_html(file_path):
     
     # Remove elements with display:none (case-insensitive, handles various CSS formats)
     for element in soup.find_all(style=True):
-        style_value = element.get('style', '').lower()
-        if re.search(r'display\s*:\s*none', style_value):
-            element.decompose()
+        if element and element.attrs:  # Check if element still exists
+            style_value = element.get('style', '').lower()
+            if re.search(r'display\s*:\s*none', style_value):
+                element.decompose()
     
-    # Remove all inline styles and style attributes
+    # Remove all inline styles and style attributes (except on body, html, head for layout)
     for tag in soup.find_all(True):
-        if tag.has_attr('style'):
+        # Preserve styles on body, html, head tags for critical layout
+        if tag.name not in ['body', 'html', 'head'] and tag.has_attr('style'):
             del tag['style']
         # Clean up other unnecessary attributes (keeping class for structure)
         attrs_to_remove = ['data-sl-aem-component', 'data-sl-component', 'data-cmp-hook-accordion', 
@@ -166,6 +198,7 @@ def main():
         print(f"Error: Could not find {input_file}")
     except Exception as e:
         print(f"Error: {e}")
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
