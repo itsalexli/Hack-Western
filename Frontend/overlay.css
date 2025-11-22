@@ -1,0 +1,158 @@
+.container {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    width: 80px;
+    height: 80px;
+    border-radius: 15%;
+    background: rgba(98, 98, 98, 0.3);
+    backdrop-filter: blur(4px);
+
+    z-index: 2147483647;
+
+    pointer-events: auto;
+    cursor: pointer;
+    overflow: visible;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    transform: translate(60px, 60px);
+
+    /* Smoothly animate border-radius (and other properties if desired) */
+    transition: width 180ms ease, height 180ms ease, border-radius 180ms ease, transform 180ms ease;
+    transform-origin: center center;
+    /* ensure pseudo-element positioning works */
+    position: fixed; /* already set, kept for clarity */
+}
+
+.container::after {
+    content: "";
+    position: absolute;
+    top: 12%;
+    bottom: 12%;
+    right: -18px;
+    width: 16px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(0,0,0,0.18));
+    opacity: 0;
+    transform: skewY(-12deg) translateX(0);
+    pointer-events: none;
+    z-index: -1;
+}
+
+.container.pinned::before {
+    content: "Simply";
+    position: absolute;
+    top: -26px;
+    left: 50%;
+    transform: translateX(-50%) translateY(0);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 180ms ease;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.45);
+} 
+
+.container:hover {
+    transform: translate(57px, 57px);
+}
+
+.container:active {
+    transform: translate(0px, 0px);
+}
+
+/* make the prism face appear on hover */
+.container:hover::after {
+    opacity: 1;
+    transform: skewY(-12deg) translateX(6px);
+}
+
+/* show the text when hovering the container */
+.container:hover p {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* show the text when hovered */
+.container:hover::before {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-4px);
+}
+
+/* optional: hide the thin prism face when rectangle */
+.container:hover::after {
+    opacity: 0;
+    transform: translateX(0);
+}
+
+/* pinned state: stay at 0,0 until toggled off */
+.container.pinned,
+.container.pinned:hover {
+    transform: translate(0, 0);
+}
+
+.container.pinned .slider {
+    opacity: 1;
+}
+
+/* The switch - the box around the slider */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 60px;
+    height: 34px;
+}
+
+/* Hide default HTML checkbox */
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+/* The slider */
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    -webkit-transition: .4s;
+    transition: .4s;
+    border-radius: 34px;
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    -webkit-transition: .4s;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #2196F3;
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .slider:before {
+    -webkit-transform: translateX(26px);
+    -ms-transform: translateX(26px);
+    transform: translateX(26px);
+}
