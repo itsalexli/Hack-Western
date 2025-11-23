@@ -5,6 +5,7 @@ from flask_cors import CORS, cross_origin
 import traceback
 import os
 from openai import OpenAI
+from typing import Optional
 
 
 app = Flask(__name__)
@@ -15,74 +16,102 @@ CORS(app, resources={r"/clean_html": {"origins": "*"}})
 MODEL_NAME = "gpt-4.1-mini"
 
 SYSTEM_PROMPT = """
-You are an accessibility-focused HTML transformer.
+You are an accessibility-focused HTML transformer. Transform webpage main content into clear, accessible layouts for older adults and people with cognitive/visual challenges.
 
-Your job:
-Take the MAIN CONTENT of an existing webpage and rebuild it into a VERY clear,
-condensed layout for older users or people with visual or cognitive overload.
+CRITICAL REQUIREMENTS:
+1. MUST include "Primary Actions" section (2-4 action chips) - infer if needed
+2. NO overlapping content - use proper grid spacing
+3. Output EXACTLY ONE <main class="a11y-page" role="main">...</main>
+4. DO NOT modify or remove the original page header - it will be preserved automatically
+5. Your <main> content should work with ANY header at the top
 
-Flow context:
-- Another part of the system has already:
-  - grabbed the page’s HTML,
-  - cleaned it,
-  - kept the original header and footer.
-- You ONLY see the main-content HTML and a URL.
-- Your output will replace the existing main-content region inside the original page.
-- The site’s own header and footer stay exactly the same.
-
-Important:
-- You ONLY generate the <main> element.
-- The surrounding <head> and <body> (including fonts, colours, and brand styling)
-  come from the original site via its own CSS files.
-- Use a simple, modern, card-based layout with clear sections and large tappable actions.
-- A single-column layout is fine. On large screens, you MAY use 2 columns,
-  but do not force a rigid grid if it doesn’t fit the content.
-
-Tone and point-of-view:
-- Match the tone and voice of the original page as much as possible.
-- Talk to the reader directly using “you” and “we”.
-- Avoid meta phrases such as “this website is” or “this page explains”.
-  Speak as if you are the site talking to the visitor.
+IMPORTANT - HEADER BEHAVIOR:
+- The original site's header/navigation will remain at the top of the page
+- Your generated content will appear BELOW the header
+- Do NOT add any top margin or positioning to compensate for header height
+- The CSS will handle spacing automatically
 
 STRICT OUTPUT REQUIREMENT:
 - Return EXACTLY ONE root element:
     <main class="a11y-page" role="main"> … </main>
 - No text, comments, or whitespace BEFORE or AFTER this <main> element.
-- This <main> block will be used directly as element.outerHTML in the browser.
 
-You MUST:
-- Output ONE <main class="a11y-page" role="main">…</main>.
-- Use short, clear sentences, but include enough detail to be genuinely helpful.
-- Strongly reduce clutter and marketing fluff.
-- Make text easy to read:
-  - short paragraphs,
-  - clear headings,
-  - bullet-like lists for complex points.
-- Use <a> elements with real href URLs for interactive buttons and chips,
-  reusing URLs from the source HTML whenever possible.
-- Keep layout changes confined INSIDE your <main>. Do NOT assume anything
-  about header height or global page structure.
+MANDATORY STRUCTURE:
+Your output MUST contain these sections in this order:
 
-You SHOULD (but may adapt as needed for the page):
-- Start with an overview section explaining what the page offers and who it helps.
-- Provide a clear “primary actions” area (key tasks as large, tappable items).
-- Provide condensed content and quick facts in separate sections or cards.
-- Organize major chunks of content into CARDS (a11y-card).
+1. HERO ROW (REQUIRED):
+   <section class="a11y-hero-row">
+     <article class="a11y-card a11y-overview-card">
+       [Overview of what this page is about - 2-4 sentences]
+     </article>
+     <aside class="a11y-card a11y-actions-card" aria-label="Primary actions">
+       <h2>What You Can Do</h2>
+       <div class="a11y-actions-layout">
+         <div class="a11y-primary-actions">
+           [2-4 action chips - ALWAYS include this, even if you need to infer actions]
+         </div>
+       </div>
+     </aside>
+   </section>
 
-You MAY:
-- Rename section headings to better match the content.
-- Drop sections that do not make sense for this page.
-- Add extra short sections (e.g., “Eligibility”, “Costs”, “Examples”, “How it works”)
-  if they help understanding.
-- Use a single-column layout if that is clearer for this page.
+2. CONTENT SECTION(S) (OPTIONAL but recommended):
+   <section class="a11y-content-section">
+     <article class="a11y-card a11y-condensed-content">
+       [Main content details]
+     </article>
+   </section>
 
-You MUST NOT:
-- Output <html>, <head>, <body>, <style>, or <script>.
-- Output markdown or code fences.
-- Copy long paragraphs from the original.
-- Invent actions or links that are not conceptually present in the source.
-- Add large fixed top margins or positioning that tries to “move below the header”.
-  The page header is handled elsewhere; just structure the content.
+3. ADDITIONAL INFO (OPTIONAL):
+   <section class="a11y-content-grid">
+     <article class="a11y-card">
+       [Additional details]
+     </article>
+     <aside class="a11y-card a11y-quick-facts">
+       [Quick facts or key points]
+     </aside>
+   </section>
+
+4. FOOTER (REQUIRED):
+   <footer class="a11y-footer">
+     <span class="a11y-large-text">
+       This view simplifies the main details. Check the full site or speak with
+       an advisor if you have questions.
+     </span>
+     <span class="a11y-large-text">
+       Source:&nbsp;
+       <a href="[original URL]" target="_blank" rel="noopener noreferrer">
+         [Short site name]
+       </a>
+     </span>
+   </footer>
+
+ACTION CHIP REQUIREMENTS:
+- Each action chip MUST use this exact structure:
+  <a href="[URL]" class="a11y-action-chip">
+    <span>[Action Title]</span>
+    <span>[Brief description]</span>
+  </a>
+- If no URLs exist in source, use "#" or the page's main URL
+- ALWAYS provide 2-4 action chips, infer from context if needed
+
+EXAMPLES OF ACTIONS TO INFER:
+- If it's a product page: "Get a Quote", "Learn More", "Contact Sales", "View Details"
+- If it's an informational page: "Read Full Article", "Contact Us", "Get Help", "Find Locations"
+- If it's a service page: "Apply Now", "Check Eligibility", "Get Started", "Find an Advisor"
+- If it's a contact page: "Send Message", "Call Us", "Find Location", "Get Support"
+
+OVERLAP PREVENTION:
+- The CSS grid will handle spacing automatically
+- DO NOT add margin-top or positioning that could cause overlaps
+- Keep content within the card boundaries
+- Each card should be self-contained
+
+FORBIDDEN:
+- Empty or missing primary actions section
+- Overlapping cards or content
+- Content extending outside cards
+- Missing the hero row with actions card
+- Missing footer
 
 ------------------------------
 READING LEVEL & CONTENT
@@ -90,146 +119,69 @@ READING LEVEL & CONTENT
 
 Audience:
 - Older adults
-- People with low vision.
-- People who get overwhelmed by busy layouts.
+- People with low vision
+- People who get overwhelmed by busy layouts
 
 Language:
-- Aim for grade 5–7 reading level.
-- Sentences 8–16 words long.
-- Use common, everyday words.
-- Explain any technical term in one simple sentence.
+- Aim for grade 5–7 reading level
+- Sentences 8–16 words long
+- Use common, everyday words
+- Explain any technical term in one simple sentence
 
 Keep only:
-- What the page is about.
-- Who it is for.
-- Main actions (buttons/flows).
-- Key facts, limits, or warnings.
-- Simple “next steps”.
+- What the page is about
+- Who it is for
+- Main actions (buttons/flows)
+- Key facts, limits, or warnings
+- Simple "next steps"
 
 Include:
-- Clear explanations of what the product/service does.
-- Plain-language explanations of benefits and important conditions.
-- Enough detail that the reader could make a basic decision or know what to ask.
+- Clear explanations of what the product/service does
+- Plain-language explanations of benefits and important conditions
+- Enough detail that the reader could make a basic decision or know what to ask
 
 Remove:
-- Marketing hype and filler.
-- Long intros and stories.
-- Repetition.
-- Most fine-print legal text (unless absolutely critical to understanding).
+- Marketing hype and filler
+- Long intros and stories
+- Repetition
+- Most fine-print legal text (unless absolutely critical to understanding)
 
-Ideal length: about 700–1400 words.
-Prefer lists and short paragraphs over large text blocks.
-
-------------------------------
-STRUCTURE (GUIDELINE, CARD-BASED)
-------------------------------
-
-Always organize the main content into CARDS.
-
-- Every major section (overview, primary actions, condensed content,
-  quick facts, eligibility, etc.) should be wrapped in an element with
-  class="a11y-card".
-- On large screens you MAY place cards in two columns.
-- On smaller screens, cards should stack in a single column
-  (the CSS handles this with media queries).
-
-Use this as a guideline. You can adjust the number of sections and columns
-as needed to best fit the content, but always keep
-<main class="a11y-page" role="main"> as the root element.
-
-Example structure:
-
-<main class="a11y-page" role="main">
-  <section class="a11y-hero-row">
-    <article class="a11y-card a11y-overview-card">…</article>
-    <aside class="a11y-card a11y-actions-card" aria-label="Primary actions">…</aside>
-  </section>
-
-  <section class="a11y-content-section">
-    <article class="a11y-card a11y-condensed-content">…</article>
-  </section>
-
-  <section class="a11y-content-grid">
-    <article class="a11y-card">…</article>
-    <aside class="a11y-card a11y-quick-facts">…</aside>
-  </section>
-
-  <footer class="a11y-footer">…</footer>
-</main>
-
-Use these class names where they make sense:
-- a11y-page, a11y-hero-row, a11y-card, a11y-overview-card, a11y-actions-card,
-  a11y-content-section, a11y-content-grid, a11y-condensed-content,
-  a11y-quick-facts, a11y-section-label, a11y-site-header, a11y-site-id,
-  a11y-favicon, a11y-site-text, a11y-site-title, a11y-site-url,
-  a11y-pill-badge, a11y-pill-dot, a11y-hero-summary, a11y-hero-cta-row,
-  a11y-primary-btn, a11y-secondary-btn, a11y-actions-layout,
-  a11y-primary-actions, a11y-action-chip, a11y-meta-row, a11y-list,
-  a11y-tag-row, a11y-tag, a11y-footer, a11y-large-text, a11y-important-text.
-
-You do NOT have to use every class, but when you need that role, prefer that name.
-The labels “Get a quote”, “Find an advisor”, etc. are EXAMPLES only; always
-derive labels from the input page.
+Ideal length: about 700–1400 words
+Prefer lists and short paragraphs over large text blocks
 
 ------------------------------
 ACTIONS & LINKS
 ------------------------------
 
 For CTAs and chips:
-
-- Use <a> elements, not <button>.
-- Reuse href URLs from important links in the source HTML.
-- If multiple links go to the same main action, pick one.
-- If you cannot confidently choose a specific URL, link to the main page URL
-  given in the prompt.
-
-------------------------------
-FOOTER / SOURCE
-------------------------------
-
-End with a footer like:
-
-<footer class="a11y-footer">
-  <span class="a11y-large-text">
-    This view simplifies the main details. Check the full site or speak with
-    an advisor if you have questions.
-  </span>
-  <span class="a11y-large-text">
-    Source:&nbsp;
-    <a href="[original URL]" target="_blank" rel="noopener noreferrer">
-      [Short site name]
-    </a>
-  </span>
-</footer>
-
-Use the canonical URL or the provided URL when possible.
+- Use <a> elements, not <button>
+- Reuse href URLs from important links in the source HTML
+- If multiple links go to the same main action, pick one
+- If you cannot confidently choose a specific URL, use "#" as placeholder
+- NEVER leave the actions section empty - always create 2-4 relevant actions
 
 ------------------------------
 GENERAL REMINDERS
 ------------------------------
 
-- Output exactly one <main class="a11y-page" role="main">…</main> element.
-- No extra text before or after this main element.
+- Output exactly one <main class="a11y-page" role="main">…</main> element
+- No extra text before or after this main element
 - Make text large and easy to read by applying class="a11y-large-text"
-  to most user-facing paragraphs and list items.
-- Use <a> tags with href URLs for interactive buttons and chips,
-  reusing real URLs from the source HTML when available.
-- Talk directly to the reader (“you”, “we”), and avoid meta “this website” phrasing.
--------------------------------
-Design
--------------------------------
-- MAKE SURE TO Access the html in a browser and see how it looks visually, then try to
-    match the design as close as possible with the exact colours and fonts.
-""" 
+  to most user-facing paragraphs and list items
+- Use <a> tags with href URLs for interactive buttons and chips
+- Talk directly to the reader ("you", "we"), and avoid meta "this website" phrasing
+- ALWAYS include the primary actions section - this is non-negotiable
+- Ensure proper spacing between cards to prevent overlaps
+"""
 
 ACCESSIBLE_CSS = r"""
-
 .a11y-page {
   margin: 0 auto 40px;
   max-width: 1200px;
   padding: 0 24px 40px;
   font-size: 1.2rem;
   line-height: 1.8;
+  position: relative;
 }
 
 @media (max-width: 768px) {
@@ -245,6 +197,7 @@ ACCESSIBLE_CSS = r"""
   grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr);
   gap: 24px;
   margin-bottom: 24px;
+  position: relative;
 }
 
 @media (max-width: 900px) {
@@ -254,32 +207,130 @@ ACCESSIBLE_CSS = r"""
   }
 }
 
+.a11y-content-section {
+  margin-bottom: 24px;
+  position: relative;
+}
+
 .a11y-card {
   background: rgba(255, 255, 255, 0.98);
   border-radius: 22px;
   border: 1px solid rgba(0, 0, 0, 0.06);
   padding: 24px 24px 20px;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
 }
+
+.a11y-actions-card {
+  min-height: 200px;
+}
+
+.a11y-actions-card h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-size: 1.3rem;
+}
+
+/* ===================================
+   HEADINGS & SUBTITLES - BOLDED
+   =================================== */
+
+h1, h2, h3, h4, h5, h6 {
+  margin-top: 0;
+  margin-bottom: 0.75em;
+  font-weight: 700; /* Always bold */
+  line-height: 1.3;
+}
+
+h1 {
+  font-size: clamp(2rem, 3vw, 2.5rem);
+}
+
+h2 {
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
+  font-weight: 700; /* Strong bold for subtitles */
+}
+
+h3 {
+  font-size: clamp(1.3rem, 2vw, 1.75rem);
+  font-weight: 700;
+}
+
+h4 {
+  font-size: clamp(1.2rem, 1.8vw, 1.5rem);
+  font-weight: 700;
+}
+
+h5, h6 {
+  font-size: clamp(1.1rem, 1.5vw, 1.3rem);
+  font-weight: 700;
+}
+
+/* ===================================
+   BUTTONS - BIG & HIGH CONTRAST
+   =================================== */
 
 /* Make anchors with button classes look like actual buttons */
 a.a11y-primary-btn,
 a.a11y-secondary-btn {
   text-decoration: none;
-  color: inherit;
+  color: #FFFFFF;
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  padding: 16px 32px;
+  min-height: 56px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: all 200ms ease-out;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.a11y-primary-btn {
+  background: #0066CC; /* High contrast blue */
+  color: #FFFFFF;
+}
+
+.a11y-primary-btn:hover {
+  background: #0052A3;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.a11y-primary-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.a11y-secondary-btn {
+  background: #2D3748; /* High contrast dark gray */
+  color: #FFFFFF;
+}
+
+.a11y-secondary-btn:hover {
+  background: #1A202C;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.a11y-secondary-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 /* Top labels / header */
 
 .a11y-section-label {
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 700; /* Bold labels */
   text-transform: uppercase;
   letter-spacing: 0.18em;
-  opacity: 0.7;
+  opacity: 0.8;
   margin-bottom: 14px;
 }
 
@@ -361,34 +412,7 @@ a.a11y-secondary-btn {
 .a11y-hero-cta-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-}
-
-.a11y-primary-btn,
-.a11y-secondary-btn {
-  border-radius: 999px;
-  padding: 10px 18px;
-  font-size: 1rem;
-  cursor: pointer;
-  border: 1px solid rgba(0, 0, 0, 0.14);
-  background: #fff;
-  box-shadow: 0 0 0 rgba(0, 0, 0, 0.0);
-  transition: box-shadow 150ms ease-out, transform 150ms ease-out,
-              background-color 150ms ease-out, border-color 150ms ease-out;
-}
-
-.a11y-primary-btn {
-  font-weight: 600;
-}
-
-.a11y-secondary-btn {
-  opacity: 0.95;
-}
-
-.a11y-primary-btn:hover,
-.a11y-secondary-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 9px 22px rgba(0, 0, 0, 0.14);
+  gap: 12px;
 }
 
 /* Actions panel */
@@ -396,49 +420,76 @@ a.a11y-secondary-btn {
 .a11y-actions-layout {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .a11y-primary-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 16px;
+  position: relative;
 }
 
-/* Chips */
+/* ===================================
+   ACTION CHIPS - BIG & HIGH CONTRAST
+   =================================== */
 
 .a11y-action-chip {
   text-decoration: none;
-  color: inherit;
+  color: #1A202C;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  flex: 1 1 45%;
-  min-width: 180px;
-  border-radius: 18px;
-  padding: 12px 14px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: rgba(255, 255, 255, 0.98);
+  justify-content: center;
+  flex: 1 1 calc(50% - 8px);
+  min-width: 200px;
+  min-height: 100px; /* Make chips taller */
+  max-width: 100%;
+  border-radius: 16px;
+  padding: 18px 20px; /* Bigger padding */
+  border: 3px solid #0066CC; /* Thicker, high-contrast border */
+  background: #FFFFFF;
   cursor: pointer;
   text-align: left;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
-  transition: box-shadow 150ms ease-out, transform 150ms ease-out,
-              border-color 150ms ease-out, background-color 150ms ease-out;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 200ms ease-out;
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 600px) {
+  .a11y-action-chip {
+    flex: 1 1 100%;
+  }
 }
 
 .a11y-action-chip span:first-child {
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-weight: 700; /* Bold title */
+  font-size: 1.2rem; /* Bigger title */
+  margin-bottom: 6px;
+  display: block;
+  color: #0066CC; /* High contrast blue */
 }
 
 .a11y-action-chip span:last-child {
-  font-size: 0.95rem;
+  font-size: 1rem; /* Bigger description */
   opacity: 0.9;
+  display: block;
+  color: #2D3748;
+  font-weight: 500; /* Slightly bold description */
 }
 
 .a11y-action-chip:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 102, 204, 0.3);
+  border-color: #0052A3;
+  background: #F7FAFC;
+  z-index: 2;
+}
+
+.a11y-action-chip:active {
   transform: translateY(-1px);
-  box-shadow: 0 9px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.2);
 }
 
 /* Meta row */
@@ -447,14 +498,15 @@ a.a11y-secondary-btn {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   opacity: 0.8;
 }
 
 .a11y-meta-row span {
-  padding: 4px 8px;
+  padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0, 0, 0, 0.06);
+  font-weight: 600;
 }
 
 /* Lists */
@@ -463,21 +515,24 @@ a.a11y-secondary-btn {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding-left: 0;
+  margin: 0;
 }
 
 .a11y-list li {
-  padding: 10px 12px;
+  padding: 14px 16px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(0, 0, 0, 0.03);
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  font-size: 1.05rem;
 }
 
 .a11y-list li strong {
   display: block;
-  margin-bottom: 4px;
-  font-weight: 600;
+  margin-bottom: 6px;
+  font-weight: 700; /* Bold list item titles */
+  font-size: 1.1rem;
 }
 
 /* Tags */
@@ -485,15 +540,17 @@ a.a11y-secondary-btn {
 .a11y-tag-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .a11y-tag {
-  padding: 4px 8px;
+  padding: 6px 12px;
   border-radius: 999px;
-  font-size: 0.85rem;
-  background: rgba(0, 0, 0, 0.04);
+  font-size: 0.9rem;
+  background: rgba(0, 0, 0, 0.06);
+  font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 /* Footer */
@@ -506,23 +563,66 @@ a.a11y-secondary-btn {
   align-items: center;
   padding-top: 12px;
   margin-top: 16px;
-  border-top: 1px dashed rgba(0, 0, 0, 0.1);
+  border-top: 2px dashed rgba(0, 0, 0, 0.15);
   font-size: 0.95rem;
   opacity: 0.9;
+  clear: both;
 }
 
 .a11y-footer a {
   text-decoration: underline;
+  font-weight: 600;
+  color: #0066CC;
+}
+
+.a11y-footer a:hover {
+  color: #0052A3;
 }
 
 /* Text sizing helpers */
 
 .a11y-large-text {
   font-size: 1.15em;
+  line-height: 1.6;
 }
 
 .a11y-important-text {
+  font-weight: 700; /* Bold important text */
+  color: #1A202C;
+}
+
+/* Ensure paragraphs have proper spacing */
+p {
+  margin-top: 0;
+  margin-bottom: 1em;
+  line-height: 1.7;
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+/* Strong and emphasis elements */
+strong, b {
+  font-weight: 700;
+  color: #1A202C;
+}
+
+em, i {
+  font-style: italic;
   font-weight: 600;
+}
+
+/* Links in content */
+.a11y-card a:not(.a11y-action-chip):not(.a11y-primary-btn):not(.a11y-secondary-btn) {
+  color: #0066CC;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.a11y-card a:not(.a11y-action-chip):not(.a11y-primary-btn):not(.a11y-secondary-btn):hover {
+  color: #0052A3;
+  text-decoration-thickness: 2px;
 }
 """
 
@@ -595,7 +695,7 @@ def call_model(system_prompt: str, user_prompt: str) -> str:
         model=MODEL_NAME,
         instructions=system_prompt,
         input=user_prompt,
-        max_output_tokens=3000,
+        max_output_tokens=5000,  # cap for speed
     )
     return resp.output_text
 
@@ -820,26 +920,20 @@ def clean_html():
     # Get the cleaned HTML
     cleaned_html = soup.prettify()
 
-    # Create response with explicit headers
-    # resp = Response(cleaned_html, mimetype='text/html; charset=utf-8')
-    # resp.headers["Access-Control-Allow-Origin"] = "*"
-    # resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    # resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-
     require_api_key()
 
     print("Extracting main content and URL ...")
     main_html, url = extract_main_html_and_url(cleaned_html)
 
     print("Calling OpenAI to generate new accessible <main> ...")
-    user_prompt = build_user_prompt(cleaned_html, url)
+    user_prompt = build_user_prompt(main_html, url)
     raw_model_output = call_model(SYSTEM_PROMPT, user_prompt)
 
     print("Normalizing model output to a single <main> block ...")
     new_main_outer = ensure_single_main_outer_html(raw_model_output)
 
     print("Replacing original main-content and injecting a11y CSS ...")
-    final_html = replace_main_and_inject_css(html_to_clean, new_main_outer)
+    final_html = replace_main_and_inject_css(cleaned_html, new_main_outer)
     
     resp = Response(final_html, mimetype='text/html; charset=utf-8')
     resp.headers["Access-Control-Allow-Origin"] = "*"
@@ -850,47 +944,3 @@ def clean_html():
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8000, debug=True)
-
-
-# def main():
-#     """Main function to run the cleaner"""
-#     import os
-    
-#     # Get the directory where this script is located
-#     script_dir = os.path.dirname(os.path.abspath(__file__))
-    
-#     input_file = os.path.join(script_dir, 'Sample2.txt')
-#     output_file = os.path.join(script_dir, 'cleaned_output.html')
-    
-#     print(f"Cleaning HTML from {input_file}...")
-    
-#     try:
-#         # Read original file to get its size
-#         with open(input_file, 'r', encoding='utf-8') as file:
-#             original_html = file.read()
-#         original_size = len(original_html)
-        
-#         cleaned_html = clean_html(input_file)
-#         cleaned_size = len(cleaned_html)
-        
-#         # Calculate reduction
-#         reduction = original_size - cleaned_size
-#         reduction_percent = (reduction / original_size * 100) if original_size > 0 else 0
-        
-#         # Save to output file
-#         with open(output_file, 'w', encoding='utf-8') as file:
-#             file.write(cleaned_html)
-        
-#         print(f"✓ Cleaned HTML saved to {output_file}")
-#         print(f"✓ Original size: {original_size:,} characters")
-#         print(f"✓ Cleaned size:  {cleaned_size:,} characters")
-#         print(f"✓ Reduced by:    {reduction:,} characters ({reduction_percent:.1f}%)")
-        
-#     except FileNotFoundError:
-#         print(f"Error: Could not find {input_file}")
-#     except Exception as e:
-#         print(f"Error: {e}")
-
-
-# if __name__ == "__main__":
-#     main()
