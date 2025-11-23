@@ -1,38 +1,52 @@
 from bs4 import BeautifulSoup
 import re
-from flask import Flask, request
+from flask import Flask, request, Response
 from flask_cors import CORS, cross_origin
+import traceback
+import os
+from openai import OpenAI
 
 
 app = Flask(__name__)
-CORS(app)
 
+# You can restrict origins later; for now allow everything while developing
+CORS(app, resources={r"/clean_html": {"origins": "*"}})
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"          # or "https://www.sunlife.ca"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
 
 @app.route("/")
 def home():
     return {"yo": "gurt"}
 
-@app.route("/clean_html", methods=["POST"])
+@app.route("/clean_html", methods=["POST", "OPTIONS"])
+@cross_origin(origins="*")
 def clean_html():
-import traceback
+    # Handle OPTIONS preflight request
+    if request.method == "OPTIONS":
+        resp = Response()
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        return resp
 
-def clean_html(file_path):
-    """
-    Clean HTML file by removing unnecessary elements while preserving content structure.
-    
-    Args:
-        file_path: Path to the HTML file to clean
-    
-    Returns:
-        Cleaned HTML as a string
-    """
-    
     # Read the HTML file
     html_content = request.data.decode('utf-8')
-    print(html_content)
+    
+    # Parse the JSON request body to get the HTML
+    import json
+    try:
+        data = json.loads(html_content)
+        html_to_clean = data.get('html', '')
+    except:
+        html_to_clean = html_content
     
     # Parse with BeautifulSoup
-    soup = BeautifulSoup(html_content, 'html.parser')
+    soup = BeautifulSoup(html_to_clean, 'html.parser')
     
     # Helper function to check if an element contains navigation
     def contains_navigation(element):
@@ -170,11 +184,17 @@ def clean_html(file_path):
     
     # Get the cleaned HTML
     cleaned_html = soup.prettify()
+
+    # Create response with explicit headers
+    resp = Response(cleaned_html, mimetype='text/html; charset=utf-8')
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     
-    return {"success": "ok", "html": cleaned_html}
+    return resp
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=8000, debug=True)
 
 
 # def main():

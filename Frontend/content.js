@@ -1,63 +1,157 @@
-if (!window.__bottomRightCircleAdded) {
-    window.__bottomRightCircleAdded = true;
+let simplified = false;
+let originalHTML = null;
 
-    const container = document.createElement("div");
-    container.className = "container";
+async function fetchNewHTML(html) {
+    const url = "http://127.0.0.1:8000/clean_html";
+    
+    try {
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json; charset=UTF-8" },
+            body: JSON.stringify({ html })
+        });
 
-    // const title = document.createElement("p");
-    // title.textContent = "Simply";
-    // container.appendChild(title);
+        console.log('fetch status:', res.status, 'content-type:', res.headers.get('content-type'));
 
-    const toggle = document.createElement("label");
-    toggle.className = "switch";
+        if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+        }
 
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    toggle.appendChild(input);
+        const cleanedHtml = await res.text();
+        console.log('Cleaned HTML received, length:', cleanedHtml.length);
+        
+        return cleanedHtml;
+    } catch (error) {
+        console.error('Error fetching cleaned HTML:', error);
+        alert('Error simplifying page. Check console for details.');
+        return null;
+    }
+}
 
-    const span = document.createElement("span");
-    span.className = "slider";
-    toggle.appendChild(span);
+function createButton() {
+    // Remove existing button if it exists
+    const existingBtn = document.getElementById("simplify-btn");
+    if (existingBtn) {
+        existingBtn.remove();
+    }
+    
+    const btn = document.createElement("button");
+    btn.innerText = simplified ? "Undo" : "Simplify";
+    btn.id = "simplify-btn";
+    btn.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 999999;
+        padding: 12px 24px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: bold;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    `;
+    btn.addEventListener("click", toggleSimplify);
+    document.body.appendChild(btn);
+}
 
-    let simplify = false;
-
-    input.onclick = async () => {
-        simplify = !simplify;
-        console.log(simplify);
-        const html = document.documentElement.outerHTML;
-
-        const url = "sadkjashfkjdakfgja";
-        try {
-            const response = await fetch(url, {
-                method: "POST", 
-                body: JSON.stringify({ html: html }),
-                headers: {
-                    "Content-type": "application/json; charset=UTF-8"
+function toggleSimplify() {
+    if (simplified) {
+        location.reload(); // revert to original
+    } else {
+        // Save original HTML before simplifying
+        if (!originalHTML) {
+            originalHTML = document.documentElement.outerHTML;
+        }
+        
+        const btn = document.getElementById("simplify-btn");
+        if (btn) {
+            btn.innerText = "Loading...";
+            btn.disabled = true;
+        }
+        
+        fetchNewHTML(originalHTML)
+            .then(html => {
+                if (!html) {
+                    console.error('No HTML returned from server');
+                    if (btn) {
+                        btn.innerText = "Simplify";
+                        btn.disabled = false;
+                    }
+                    return;
+                }
+                
+                // Inject the button controller script into the cleaned HTML
+                const scriptTag = `
+                    <script>
+                        (function() {
+                            let simplified = true;
+                            
+                            function createButton() {
+                                const existingBtn = document.getElementById("simplify-btn");
+                                if (existingBtn) {
+                                    existingBtn.remove();
+                                }
+                                
+                                const btn = document.createElement("button");
+                                btn.innerText = "Undo";
+                                btn.id = "simplify-btn";
+                                btn.style.cssText = \`
+                                    position: fixed;
+                                    bottom: 20px;
+                                    right: 20px;
+                                    z-index: 999999;
+                                    padding: 12px 24px;
+                                    background-color: #f44336;
+                                    color: white;
+                                    border: none;
+                                    border-radius: 5px;
+                                    cursor: pointer;
+                                    font-size: 14px;
+                                    font-weight: bold;
+                                    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                \`;
+                                btn.addEventListener("click", function() {
+                                    location.reload();
+                                });
+                                document.body.appendChild(btn);
+                            }
+                            
+                            if (document.readyState === 'loading') {
+                                document.addEventListener('DOMContentLoaded', createButton);
+                            } else {
+                                createButton();
+                            }
+                        })();
+                    </script>
+                `;
+                
+                // Insert the script before closing body tag
+                const htmlWithScript = html.replace('</body>', scriptTag + '</body>');
+                
+                // Replace the entire document
+                document.open();
+                document.write(htmlWithScript);
+                document.close();
+                
+                simplified = true;
+            })
+            .catch(error => {
+                console.error('Error in toggleSimplify:', error);
+                alert('Error simplifying page. Check console for details.');
+                if (btn) {
+                    btn.innerText = "Simplify";
+                    btn.disabled = false;
                 }
             });
+    }
+}
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const result = await response.json();
-            console.log(result);
-        } catch (error) {
-            console.error("Error fetching data:", error);
-        }
-    };
-
-    container.appendChild(toggle);
-
-    // prevent clicks on the switch/slider from bubbling up to the container
-    input.addEventListener('click', (ev) => ev.stopPropagation());
-    toggle.addEventListener('click', (ev) => ev.stopPropagation());
-
-    container.addEventListener("click", (e) => {
-        
-        if (e.target.tagName === "INPUT" || e.target.closest("input")) return;
-        container.classList.toggle("pinned");
-    });
-
-    document.body.appendChild(container);
+// Initial button creation
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', createButton);
+} else {
+    createButton();
 }
