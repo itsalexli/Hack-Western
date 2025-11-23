@@ -94,7 +94,7 @@ function injectElevenLabsPanel() {
   iframe.style.bottom = "20px";
   iframe.style.left = "20px";
   iframe.style.width = "360px";
-  iframe.style.height = "220px";
+  iframe.style.height = "100px";
   iframe.style.border = "none";
   iframe.style.borderRadius = "16px";
   iframe.style.zIndex = "2147483647";
