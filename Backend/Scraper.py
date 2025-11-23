@@ -6,7 +6,7 @@ import traceback
 import os
 from openai import OpenAI
 from typing import Optional
-
+from elevenlabs.client import ElevenLabs
 
 app = Flask(__name__)
 

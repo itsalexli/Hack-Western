@@ -35,10 +35,22 @@ function createButton() {
     if (existingBtn) {
         existingBtn.remove();
     }
-    
+
     const btn = document.createElement("button");
     btn.id = "simplify";
-    
+
+    // Base overlay styles – always apply these
+    btn.style.position = "fixed";
+    btn.style.bottom = "20px";
+    btn.style.right = "20px";
+    btn.style.zIndex = "2147483648"; // higher than the iframe so it's visible
+    btn.style.padding = "10px 20px";
+    btn.style.color = "white";
+    btn.style.border = "none";
+    btn.style.borderRadius = "5px";
+    btn.style.fontSize = "16px";
+
+    // State-specific styles
     if (isLoading) {
         btn.innerText = "Loading...";
         btn.disabled = true;
@@ -55,15 +67,44 @@ function createButton() {
         btn.style.backgroundColor = "#4CAF50";
         btn.style.cursor = "pointer";
     } else {
+        // Initial state before simplifiedHTML is ready
         btn.innerText = "Simplify";
         btn.disabled = true;
         btn.style.backgroundColor = "#999";
         btn.style.cursor = "not-allowed";
     }
-    
+
     btn.addEventListener("click", toggleSimplify);
     document.body.appendChild(btn);
 }
+
+
+function injectElevenLabsPanel() {
+  if (document.getElementById("elevenlabs-panel-iframe")) return;
+
+  const iframe = document.createElement("iframe");
+  iframe.id = "elevenlabs-panel-iframe";
+
+  const pageUrl = encodeURIComponent(window.location.href);
+  iframe.src = chrome.runtime.getURL(`eleven-panel.html?url=${pageUrl}`);
+
+  iframe.allow = "microphone; autoplay";
+
+  iframe.style.position = "fixed";
+  iframe.style.bottom = "20px";
+  iframe.style.left = "20px";
+  iframe.style.width = "360px";
+  iframe.style.height = "220px";
+  iframe.style.border = "none";
+  iframe.style.borderRadius = "16px";
+  iframe.style.zIndex = "2147483647";
+  iframe.style.boxShadow = "0 12px 30px rgba(0,0,0,0.35)";
+  iframe.style.background = "transparent";
+  iframe.style.overflow = "hidden";
+
+  document.documentElement.appendChild(iframe);
+}
+
 
 function updateButtonState() {
     const btn = document.getElementById("simplify");
@@ -116,7 +157,7 @@ function toggleSimplify() {
                             position: fixed;
                             bottom: 20px;
                             right: 20px;
-                            z-index: 999999;
+                            z-index: 2147483648;
                             padding: 10px 20px;
                             background: #ff4444;
                             color: white;
@@ -184,6 +225,7 @@ function initialize() {
     window.__simplifyInitialized = true;
     
     createButton();
+    injectElevenLabsPanel(); // <<< add this line
     
     // Start pre-fetching after a short delay
     setTimeout(() => {
